@@ -326,11 +326,16 @@
 
 <div class="filter-bar" id="filter-bar">
   <span class="filter-label">Piscines :</span>
-  <!-- chips injected by JS -->
+  <!-- pool chips injected by JS -->
   <div class="filter-actions">
     <button class="filter-action-btn" onclick="selectAll()">Tout sélectionner</button>
     <button class="filter-action-btn" onclick="selectNone()">Tout désélectionner</button>
   </div>
+</div>
+
+<div class="filter-bar" id="activity-filter-bar">
+  <span class="filter-label">Activités :</span>
+  <!-- activity chips injected by JS -->
 </div>
 
 <div class="legend">
@@ -359,10 +364,14 @@
     "Centre du Sablon",
   ];
 
-  // Tracks which pools are selected (populated after first load)
+  // Pool filter
   let selectedPools = new Set(POOL_ORDER);
-  // All pools that actually have data
   let allPools = [];
+
+  // Activity filter
+  let selectedActivities = new Set();
+  let allActivities = [];
+
   // Last loaded sessions
   let lastSessions = [];
 
@@ -436,13 +445,39 @@
 
   function selectAll() {
     allPools.forEach(p => selectedPools.add(p));
-    document.querySelectorAll(".filter-chip").forEach(c => c.classList.add("active"));
+    document.querySelectorAll("#filter-bar .filter-chip").forEach(c => c.classList.add("active"));
     renderContent();
   }
 
   function selectNone() {
     selectedPools.clear();
-    document.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
+    document.querySelectorAll("#filter-bar .filter-chip").forEach(c => c.classList.remove("active"));
+    renderContent();
+  }
+
+  // Activity chips
+  function buildActivityChips(activities) {
+    const bar = document.getElementById("activity-filter-bar");
+    bar.querySelectorAll(".filter-chip").forEach(c => c.remove());
+
+    for (const activity of activities) {
+      const chip = document.createElement("span");
+      chip.className = "filter-chip" + (selectedActivities.has(activity) ? " active" : "");
+      chip.dataset.activity = activity;
+      chip.innerHTML = `<span class="check">✓</span> ${activity}`;
+      chip.addEventListener("click", () => toggleActivity(activity, chip));
+      bar.appendChild(chip);
+    }
+  }
+
+  function toggleActivity(activity, chip) {
+    if (selectedActivities.has(activity)) {
+      selectedActivities.delete(activity);
+      chip.classList.remove("active");
+    } else {
+      selectedActivities.add(activity);
+      chip.classList.add("active");
+    }
     renderContent();
   }
 
@@ -497,7 +532,10 @@
       return;
     }
 
-    const filtered = lastSessions.filter(s => selectedPools.has(s.pool));
+    const filtered = lastSessions.filter(s =>
+      selectedPools.has(s.pool) &&
+      (selectedActivities.size === 0 || selectedActivities.has(s.activity || "(aucune)"))
+    );
     const groups = groupByPool(filtered);
 
     if (!Object.keys(groups).length) {
@@ -553,7 +591,18 @@
       poolsInData.forEach(p => { if (!allPools.includes(p)) selectedPools.add(p); });
       allPools = poolsInData;
 
+      // Build activity list from data (unique, sorted, skip empty)
+      const activitySet = new Set();
+      for (const s of lastSessions) {
+        if (s.activity) activitySet.add(s.activity);
+      }
+      const activitiesInData = [...activitySet].sort((a, b) => a.localeCompare(b, "fr"));
+      // Add any new activities to selection by default
+      activitiesInData.forEach(a => { if (!allActivities.includes(a)) selectedActivities.add(a); });
+      allActivities = activitiesInData;
+
       buildFilterChips(allPools);
+      buildActivityChips(allActivities);
       renderContent();
 
       cacheNote.textContent = "Données mises en cache 3 heures · " + new Date().toLocaleTimeString("fr-CA");

@@ -109,12 +109,17 @@ async def fetch_slots(pool_name: str, surface_id: str, target_date: date) -> lis
         if isinstance(activity, dict):
             activity = activity.get("FR") or activity.get("EN") or ""
 
+        sub_activity = slot.get("subActivityName")
+        if isinstance(sub_activity, dict):
+            sub_activity = sub_activity.get("FR") or sub_activity.get("EN") or ""
+
         results.append({
             "pool": pool_name,
             "source": "splextech",
             "start": slot.get("startDate", ""),
             "end": slot.get("endDate", ""),
             "activity": activity or "",
+            "description": sub_activity or "",
             "note": slot.get("notePublic") or "",
             "color": slot.get("activityColor") or "",
             "type": _classify_session(slot),

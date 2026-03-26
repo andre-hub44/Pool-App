@@ -328,6 +328,7 @@
       : s.note || "—";
 
     const activity = s.activity || "";
+    const description = s.description || "";
     const note = s.start ? (s.note || "") : "";
 
     return `
@@ -336,6 +337,7 @@
         <div class="session-time">${timeStr}</div>
         <div class="session-detail">
           ${activity ? `<div class="session-activity">${activity}</div>` : ""}
+          ${description ? `<div class="session-note">${description}</div>` : ""}
           ${note ? `<div class="session-note">${note}</div>` : ""}
         </div>
         ${renderBadge(s.type)}

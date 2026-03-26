@@ -379,12 +379,22 @@
     } catch(e) {}
   }
 
+  // Default selections (used only when no saved preference exists)
+  const DEFAULT_POOLS = new Set([
+    "Complexe Aquatique – Bassin Sportif",
+    "Piscine Vanier",
+    "Centre sportif Josée-Faucher",
+  ]);
+  const DEFAULT_ACTIVITIES = new Set([
+    "Couloirs de nage",
+  ]);
+
   // Pool filter
-  let selectedPools = new Set(POOL_ORDER);
+  let selectedPools = new Set(DEFAULT_POOLS);
   let allPools = [];
 
   // Activity filter
-  let selectedActivities = new Set();
+  let selectedActivities = new Set(DEFAULT_ACTIVITIES);
   let allActivities = [];
 
   // Last loaded sessions
@@ -609,9 +619,15 @@
         if (!seen.has(s.pool)) { poolsInData.push(s.pool); seen.add(s.pool); }
       }
 
-      // New pools/activities not yet in localStorage default to selected
+      // New pools not yet seen: select only if in defaults
       const savedPools = localStorage.getItem("selectedPools");
-      poolsInData.forEach(p => { if (!savedPools || !allPools.includes(p)) selectedPools.add(p); });
+      poolsInData.forEach(p => {
+        if (!allPools.includes(p)) {
+          if (savedPools) { /* already loaded from localStorage */ }
+          else if (DEFAULT_POOLS.has(p)) selectedPools.add(p);
+          else selectedPools.delete(p);
+        }
+      });
       allPools = poolsInData;
 
       const activitySet = new Set();
@@ -620,7 +636,13 @@
       }
       const activitiesInData = [...activitySet].sort((a, b) => a.localeCompare(b, "fr"));
       const savedActivities = localStorage.getItem("selectedActivities");
-      activitiesInData.forEach(a => { if (!savedActivities || !allActivities.includes(a)) selectedActivities.add(a); });
+      activitiesInData.forEach(a => {
+        if (!allActivities.includes(a)) {
+          if (savedActivities) { /* already loaded from localStorage */ }
+          else if (DEFAULT_ACTIVITIES.has(a)) selectedActivities.add(a);
+          else selectedActivities.delete(a);
+        }
+      });
       allActivities = activitiesInData;
 
       buildFilterChips(allPools);

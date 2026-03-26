@@ -1,7 +1,5 @@
 """Pool scheduler FastAPI app."""
 import asyncio
-import base64
-import json
 import os
 import sqlite3
 from datetime import date, datetime, timezone
@@ -164,110 +162,28 @@ async def sessions(date: str = Query(default=None)):
 
 @app.post("/api/upload-schedule")
 async def upload_schedule(file: UploadFile = File(...)):
-    """Accept a PDF or image of a pool schedule and parse it with Claude Vision."""
-    try:
-        import anthropic as anthropic_sdk
-    except ImportError:
-        return JSONResponse({"error": "Package 'anthropic' not installed."}, status_code=500)
-
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return JSONResponse({"error": "ANTHROPIC_API_KEY not configured on the server."}, status_code=500)
+    """Accept a PDF or image of a pool schedule and parse it with open-source libraries."""
+    from scrapers.pdf_parser import parse_schedule_file
 
     content = await file.read()
-    media_type = (file.content_type or "").lower()
+    media_type = (file.content_type or "").lower().split(";")[0].strip()
 
-    # Normalize jpg
     if media_type in ("image/jpg",):
         media_type = "image/jpeg"
 
-    if media_type == "application/pdf":
-        content_block = {
-            "type": "document",
-            "source": {
-                "type": "base64",
-                "media_type": "application/pdf",
-                "data": base64.standard_b64encode(content).decode("utf-8"),
-            },
-        }
-    elif media_type in ("image/jpeg", "image/png", "image/webp", "image/gif"):
-        content_block = {
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": media_type,
-                "data": base64.standard_b64encode(content).decode("utf-8"),
-            },
-        }
-    else:
+    supported = ("application/pdf", "image/jpeg", "image/png", "image/webp")
+    if media_type not in supported:
         return JSONResponse(
             {"error": f"Format non supporté ({media_type}). Utilisez PDF, JPG ou PNG."},
-            status_code=400
+            status_code=400,
         )
 
-    prompt = """Analyze this pool schedule document and extract the complete weekly schedule as JSON.
-
-Return ONLY valid JSON with no markdown formatting, in this exact structure:
-{
-  "pools": [
-    {
-      "name": "Full pool name exactly as shown in document",
-      "sessions": [
-        {
-          "day_of_week": 0,
-          "start_time": "HH:MM",
-          "end_time": "HH:MM",
-          "activity": "Activity name in French",
-          "type": "public",
-          "description": "Optional extra details e.g. number of lanes"
-        }
-      ]
-    }
-  ],
-  "closures": [
-    {
-      "pool_name": "pool name or all",
-      "date": "YYYY-MM-DD",
-      "reason": "reason for closure"
-    }
-  ]
-}
-
-Rules:
-- day_of_week: 0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday, 4=Friday, 5=Saturday, 6=Sunday
-- type: use "public" for bain libre and couloirs de nage; "club" for club activities; "other" for anything else
-- Include ALL time slots shown in the document for every day
-- If multiple pools appear in the document (e.g. Piscine 25m and Bassin récréatif), include each as a separate entry in the pools array
-- Times must be in HH:MM 24h format, local Montreal time
-- Extract all planned closures (Fermetures prévues) into the closures array with YYYY-MM-DD dates"""
-
-    client = anthropic_sdk.Anthropic(api_key=api_key)
-    message = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=4096,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    content_block,
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ],
-    )
-
-    response_text = message.content[0].text.strip()
-
-    # Strip markdown code fences if present
-    if response_text.startswith("```"):
-        lines = response_text.split("\n")
-        end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
-        response_text = "\n".join(lines[1:end])
-
     try:
-        schedule_data = json.loads(response_text)
-    except json.JSONDecodeError as e:
-        return JSONResponse({"error": f"Impossible de parser la réponse: {e}"}, status_code=500)
+        schedule_data = parse_schedule_file(content, media_type)
+    except RuntimeError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    except Exception as e:
+        return JSONResponse({"error": f"Échec de l'analyse : {e}"}, status_code=500)
 
     conn = sqlite3.connect(DB_PATH)
     try:

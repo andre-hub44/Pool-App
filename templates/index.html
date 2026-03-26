@@ -364,14 +364,22 @@
     "Centre du Sablon",
   ];
 
-  // Persist filters to localStorage
+  const FILTERS_VERSION = "2";
+
   function saveFilters() {
+    localStorage.setItem("filtersVersion", FILTERS_VERSION);
     localStorage.setItem("selectedPools", JSON.stringify([...selectedPools]));
     localStorage.setItem("selectedActivities", JSON.stringify([...selectedActivities]));
   }
 
   function loadFilters() {
     try {
+      // If version mismatch, wipe saved prefs so defaults apply
+      if (localStorage.getItem("filtersVersion") !== FILTERS_VERSION) {
+        localStorage.removeItem("selectedPools");
+        localStorage.removeItem("selectedActivities");
+        return;
+      }
       const pools = localStorage.getItem("selectedPools");
       if (pools) selectedPools = new Set(JSON.parse(pools));
       const activities = localStorage.getItem("selectedActivities");

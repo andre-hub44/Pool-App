@@ -66,13 +66,88 @@
       font-size: 0.8rem;
     }
 
-    .legend {
+    /* Filter bar */
+    .filter-bar {
       padding: 0.75rem 1.5rem;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .filter-label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #475569;
+      margin-right: 0.25rem;
+      white-space: nowrap;
+    }
+
+    .filter-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.3rem 0.7rem;
+      border-radius: 999px;
+      border: 1.5px solid #e2e8f0;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .filter-chip:hover {
+      border-color: #1a56db;
+      color: #1a56db;
+    }
+
+    .filter-chip.active {
+      background: #1a56db;
+      border-color: #1a56db;
+      color: white;
+    }
+
+    .filter-chip .check {
+      font-size: 0.7rem;
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+
+    .filter-chip.active .check { opacity: 1; }
+
+    .filter-actions {
+      display: flex;
+      gap: 0.4rem;
+      margin-left: auto;
+    }
+
+    .filter-action-btn {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      transition: color 0.15s;
+    }
+
+    .filter-action-btn:hover { color: #1a56db; }
+
+    /* Legend */
+    .legend {
+      padding: 0.6rem 1.5rem;
       display: flex;
       gap: 1.25rem;
       align-items: center;
       flex-wrap: wrap;
-      background: white;
+      background: #f8fafc;
       border-bottom: 1px solid #e2e8f0;
       font-size: 0.82rem;
     }
@@ -186,9 +261,7 @@
       line-height: 1.4;
     }
 
-    .session-detail {
-      flex: 1;
-    }
+    .session-detail { flex: 1; }
 
     .session-activity {
       font-size: 0.88rem;
@@ -251,6 +324,15 @@
   </div>
 </header>
 
+<div class="filter-bar" id="filter-bar">
+  <span class="filter-label">Piscines :</span>
+  <!-- chips injected by JS -->
+  <div class="filter-actions">
+    <button class="filter-action-btn" onclick="selectAll()">Tout sélectionner</button>
+    <button class="filter-action-btn" onclick="selectNone()">Tout désélectionner</button>
+  </div>
+</div>
+
 <div class="legend">
   <span style="font-weight:600; color:#475569;">Légende :</span>
   <span class="legend-item"><span class="dot dot-public"></span> Bain public</span>
@@ -277,13 +359,19 @@
     "Centre du Sablon",
   ];
 
+  // Tracks which pools are selected (populated after first load)
+  let selectedPools = new Set(POOL_ORDER);
+  // All pools that actually have data
+  let allPools = [];
+  // Last loaded sessions
+  let lastSessions = [];
+
   function todayStr() {
     return new Date().toISOString().slice(0, 10);
   }
 
   function formatTime(isoStr) {
     if (!isoStr) return "—";
-    // Convert UTC to local time
     const d = new Date(isoStr);
     return d.toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit", hour12: false });
   }
@@ -317,6 +405,47 @@
     return groups;
   }
 
+  // Build filter chips from pool list
+  function buildFilterChips(pools) {
+    const bar = document.getElementById("filter-bar");
+    const actions = bar.querySelector(".filter-actions");
+
+    // Remove old chips
+    bar.querySelectorAll(".filter-chip").forEach(c => c.remove());
+
+    for (const pool of pools) {
+      const chip = document.createElement("span");
+      chip.className = "filter-chip" + (selectedPools.has(pool) ? " active" : "");
+      chip.dataset.pool = pool;
+      chip.innerHTML = `<span class="check">✓</span> ${pool}`;
+      chip.addEventListener("click", () => togglePool(pool, chip));
+      bar.insertBefore(chip, actions);
+    }
+  }
+
+  function togglePool(pool, chip) {
+    if (selectedPools.has(pool)) {
+      selectedPools.delete(pool);
+      chip.classList.remove("active");
+    } else {
+      selectedPools.add(pool);
+      chip.classList.add("active");
+    }
+    renderContent();
+  }
+
+  function selectAll() {
+    allPools.forEach(p => selectedPools.add(p));
+    document.querySelectorAll(".filter-chip").forEach(c => c.classList.add("active"));
+    renderContent();
+  }
+
+  function selectNone() {
+    selectedPools.clear();
+    document.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
+    renderContent();
+  }
+
   function renderBadge(type) {
     const labels = { public: "Public", club: "Club", closed: "Fermé", other: "Autre" };
     return `<span class="badge badge-${type}">${labels[type] || type}</span>`;
@@ -326,7 +455,6 @@
     const timeStr = s.start
       ? `${formatTime(s.start)} – ${formatTime(s.end)}`
       : s.note || "—";
-
     const activity = s.activity || "";
     const description = s.description || "";
     const note = s.start ? (s.note || "") : "";
@@ -360,46 +488,74 @@
       </div>`;
   }
 
+  function renderContent() {
+    const dateStr = document.getElementById("date-input").value;
+    const content = document.getElementById("content");
+
+    if (!lastSessions.length) {
+      content.innerHTML = `<div class="no-data">Aucune donnée disponible pour le ${formatDateLabel(dateStr)}.</div>`;
+      return;
+    }
+
+    const filtered = lastSessions.filter(s => selectedPools.has(s.pool));
+    const groups = groupByPool(filtered);
+
+    if (!Object.keys(groups).length) {
+      content.innerHTML = `<div class="no-data">Aucune piscine sélectionnée.</div>`;
+      return;
+    }
+
+    const rendered = new Set();
+    let html = `<p style="font-size:0.82rem;color:#64748b;margin-bottom:0.75rem;">${formatDateLabel(dateStr)}</p>`;
+
+    for (const pool of POOL_ORDER) {
+      if (groups[pool]) {
+        html += renderPool(pool, groups[pool]);
+        rendered.add(pool);
+      }
+    }
+    for (const pool of Object.keys(groups)) {
+      if (!rendered.has(pool)) html += renderPool(pool, groups[pool]);
+    }
+
+    content.innerHTML = html;
+  }
+
   async function loadDate(dateStr) {
     const status = document.getElementById("status");
-    const content = document.getElementById("content");
     const cacheNote = document.getElementById("cache-note");
 
     status.innerHTML = `<span class="spinner"></span> Chargement…`;
-    content.innerHTML = "";
+    document.getElementById("content").innerHTML = "";
     cacheNote.style.display = "none";
 
     try {
       const resp = await fetch(`/api/sessions?date=${dateStr}`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const sessions = await resp.json();
+      lastSessions = await resp.json();
 
       status.innerHTML = "";
 
-      if (!sessions.length) {
-        content.innerHTML = `<div class="no-data">Aucune donnée disponible pour le ${formatDateLabel(dateStr)}.</div>`;
-        return;
-      }
-
-      const groups = groupByPool(sessions);
-
-      // Render in defined order, then any remaining pools
-      const rendered = new Set();
-      let html = `<p style="font-size:0.82rem;color:#64748b;margin-bottom:0.75rem;">${formatDateLabel(dateStr)}</p>`;
-
+      // Build pool list from data (preserving order)
+      const poolsInData = [];
+      const seen = new Set();
       for (const pool of POOL_ORDER) {
-        if (groups[pool]) {
-          html += renderPool(pool, groups[pool]);
-          rendered.add(pool);
+        if (lastSessions.some(s => s.pool === pool) && !seen.has(pool)) {
+          poolsInData.push(pool);
+          seen.add(pool);
         }
       }
-      for (const pool of Object.keys(groups)) {
-        if (!rendered.has(pool)) {
-          html += renderPool(pool, groups[pool]);
-        }
+      for (const s of lastSessions) {
+        if (!seen.has(s.pool)) { poolsInData.push(s.pool); seen.add(s.pool); }
       }
 
-      content.innerHTML = html;
+      // Add any new pools to selection by default
+      poolsInData.forEach(p => { if (!allPools.includes(p)) selectedPools.add(p); });
+      allPools = poolsInData;
+
+      buildFilterChips(allPools);
+      renderContent();
+
       cacheNote.textContent = "Données mises en cache 3 heures · " + new Date().toLocaleTimeString("fr-CA");
       cacheNote.style.display = "block";
 
@@ -410,9 +566,8 @@
 
   // Init
   const input = document.getElementById("date-input");
-  const today = todayStr();
-  input.value = today;
-  loadDate(today);
+  input.value = todayStr();
+  loadDate(todayStr());
 </script>
 </body>
 </html>

@@ -364,6 +364,21 @@
     "Centre du Sablon",
   ];
 
+  // Persist filters to localStorage
+  function saveFilters() {
+    localStorage.setItem("selectedPools", JSON.stringify([...selectedPools]));
+    localStorage.setItem("selectedActivities", JSON.stringify([...selectedActivities]));
+  }
+
+  function loadFilters() {
+    try {
+      const pools = localStorage.getItem("selectedPools");
+      if (pools) selectedPools = new Set(JSON.parse(pools));
+      const activities = localStorage.getItem("selectedActivities");
+      if (activities) selectedActivities = new Set(JSON.parse(activities));
+    } catch(e) {}
+  }
+
   // Pool filter
   let selectedPools = new Set(POOL_ORDER);
   let allPools = [];
@@ -374,6 +389,9 @@
 
   // Last loaded sessions
   let lastSessions = [];
+
+  // Restore saved filters immediately
+  loadFilters();
 
   function todayStr() {
     return new Date().toISOString().slice(0, 10);
@@ -440,18 +458,21 @@
       selectedPools.add(pool);
       chip.classList.add("active");
     }
+    saveFilters();
     renderContent();
   }
 
   function selectAll() {
     allPools.forEach(p => selectedPools.add(p));
     document.querySelectorAll("#filter-bar .filter-chip").forEach(c => c.classList.add("active"));
+    saveFilters();
     renderContent();
   }
 
   function selectNone() {
     selectedPools.clear();
     document.querySelectorAll("#filter-bar .filter-chip").forEach(c => c.classList.remove("active"));
+    saveFilters();
     renderContent();
   }
 
@@ -478,6 +499,7 @@
       selectedActivities.add(activity);
       chip.classList.add("active");
     }
+    saveFilters();
     renderContent();
   }
 
@@ -587,18 +609,18 @@
         if (!seen.has(s.pool)) { poolsInData.push(s.pool); seen.add(s.pool); }
       }
 
-      // Add any new pools to selection by default
-      poolsInData.forEach(p => { if (!allPools.includes(p)) selectedPools.add(p); });
+      // New pools/activities not yet in localStorage default to selected
+      const savedPools = localStorage.getItem("selectedPools");
+      poolsInData.forEach(p => { if (!savedPools || !allPools.includes(p)) selectedPools.add(p); });
       allPools = poolsInData;
 
-      // Build activity list from data (unique, sorted, skip empty)
       const activitySet = new Set();
       for (const s of lastSessions) {
         if (s.activity) activitySet.add(s.activity);
       }
       const activitiesInData = [...activitySet].sort((a, b) => a.localeCompare(b, "fr"));
-      // Add any new activities to selection by default
-      activitiesInData.forEach(a => { if (!allActivities.includes(a)) selectedActivities.add(a); });
+      const savedActivities = localStorage.getItem("selectedActivities");
+      activitiesInData.forEach(a => { if (!savedActivities || !allActivities.includes(a)) selectedActivities.add(a); });
       allActivities = activitiesInData;
 
       buildFilterChips(allPools);
